@@ -14,11 +14,11 @@ Where to find the code
 
 Key components
 
-- Embeddings: SentenceTransformer (`all-MiniLM-L6-v2` by default).
+- Embeddings: SentenceTransformer (`intfloat/e5-base-v2` by default).
 - Similarity: cosine similarity used for relevance and for chunk-chunk
   similarity (`s` matrix).
 - Greedy selector: `greedy_selection(...)` considers relevance, redundancy,
-  coverage, and entity overlap and selects chunks until the length budget
+  coverage and entity overlap and selects chunks until the length budget
   `B` is exhausted.
 - Neo4j helpers: optional functions to store chunks and SIMILAR edges in
   Neo4j for neighborhood expansion (`get_neighbors`).

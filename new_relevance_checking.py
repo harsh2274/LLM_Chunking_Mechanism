@@ -1,18 +1,3 @@
-"""new_relevance_checking
-
-This module implements a greedy relevance-based chunk selection algorithm
-for HotpotQA-style data. It encodes query and document chunks with a
-SentenceTransformer, computes relevance and similarity signals, and
-selects chunks under a budget using a multi-factor greedy objective.
-
-Main artifacts:
-- `greedy_selection`: budgeted greedy selector using relevance, redundancy,
-  coverage and entity overlap signals.
-- Neo4j helpers to store chunks and similarity edges (optional runtime).
-
-See DOCUMENTATION.md for algorithm details and usage instructions.
-"""
-
 import json
 import numpy as np
 from statistics import mean
@@ -31,56 +16,21 @@ driver = GraphDatabase.driver(
 )
 
 def cosine(list_a,list_b):
-    """Compute cosine similarity between two vectors.
-
-    Args:
-        list_a: 1-D array-like embedding.
-        list_b: 1-D array-like embedding.
-
-    Returns:
-        Float cosine similarity in [-1, 1].
-    """
     return np.dot(list_a,list_b) / (np.linalg.norm(list_a) * np.linalg.norm(list_b))
 
 def answer_covered(selected_chunks, answer):
-    """Check whether the `answer` string appears in any selected chunk.
-
-    Args:
-        selected_chunks: list of chunk text strings.
-        answer: answer string to match.
-
-    Returns:
-        True if `answer` (case-insensitive substring) appears in at least
-        one chunk, otherwise False.
-    """
     answer = answer.lower()
     return any(answer in chunk.lower() for chunk in selected_chunks)
 
 
 def precision(selected_chunks, answer):
-    """Compute precision of selected chunks with respect to the answer.
-
-    Precision = (# chunks containing the answer) / (# selected chunks).
-
-    Args:
-        selected_chunks: list of chunk text strings.
-        answer: answer string.
-
-    Returns:
-        Float precision in [0,1].
-    """
     if not selected_chunks:
         return 0
-
+    
     relevant = sum(answer.lower() in chunk.lower() for chunk in selected_chunks)
     return relevant / len(selected_chunks)
 
 def store_chunks_in_neo4j(chunks):
-    """Persist a list of chunks into Neo4j as `:Chunk` nodes.
-
-    Each chunk is stored with properties `id` (index) and `text`.
-    Requires `driver` to be configured for a running Neo4j instance.
-    """
     with driver.session() as session:
         for i, chunk in enumerate(chunks):
             session.run(
@@ -90,12 +40,6 @@ def store_chunks_in_neo4j(chunks):
             )
 
 def store_edges_in_neo4j(score_matrix, threshold=0.7):
-    """Create `SIMILAR` relationships in Neo4j from a similarity matrix.
-
-    Args:
-        score_matrix: 2D array-like similarity scores between chunks.
-        threshold: minimum score to create an edge.
-    """
     with driver.session() as session:
         for i in range(len(score_matrix)):
             for j in range(len(score_matrix)):
@@ -109,15 +53,6 @@ def store_edges_in_neo4j(score_matrix, threshold=0.7):
                     )
 
 def get_neighbors(chunk_id, limit=5):
-    """Return neighbor chunk ids connected by `:SIMILAR` edges.
-
-    Args:
-        chunk_id: integer id of the chunk node.
-        limit: maximum number of neighbors to return.
-
-    Returns:
-        List of neighbor chunk ids (ints).
-    """
     with driver.session() as session:
         result = session.run(
             """
@@ -131,14 +66,6 @@ def get_neighbors(chunk_id, limit=5):
         return [record["id"] for record in result]
 
 def extract_from_hotpot(sample):
-    """Extract query, document chunks, and answer from a HotpotQA sample.
-
-    The function concatenates sentences grouped per title into a single
-    chunk per title.
-
-    Returns:
-        (query, chunks, answer)
-    """
     query = sample["question"]
     answer = sample["answer"]
     chunks = []
@@ -153,38 +80,13 @@ def extract_from_hotpot(sample):
     return query, chunks, answer
 
 def entity_overlap(query, chunk):
-    """Simple entity/word overlap score between query and chunk.
-
-    This returns the fraction of unique query tokens that appear in the
-    chunk. It is a lightweight proxy for entity overlap.
-    """
     query_words = set(query.lower().split())
     chunk_words = set(chunk.lower().split())
     return len(query_words & chunk_words) / len(query_words)
 
+
 def greedy_selection(chunk_embeddings, query_embedding, s, L, B=30, lambda_=2.0, gamma = 0.5, delta = 0.3):
-    """Select chunk indices using a budgeted greedy objective.
-
-    Objective factors:
-    - relevance r (cosine with current query embedding)
-    - redundancy (sum of pairwise similarities to chosen set S)
-    - coverage (prefers chunks that add information w.r.t S)
-    - entity overlap with original query (lightweight signal)
-
-    Args:
-        chunk_embeddings: array-like of chunk embeddings.
-        query_embedding: embedding vector for the query.
-        s: pairwise similarity matrix (n x n) between chunks.
-        L: array-like of chunk lengths (token/word counts).
-        B: budget (sum of lengths) to respect.
-        lambda_: weight for redundancy penalty.
-        gamma: weight for coverage reward.
-        delta: weight for entity overlap reward.
-
-    Returns:
-        List of selected chunk indices (ints), in selection order.
-    """
-
+    
     S = []
     budget_used = 0
     remaining = set(range(len(chunk_embeddings)))
@@ -244,8 +146,8 @@ def greedy_selection(chunk_embeddings, query_embedding, s, L, B=30, lambda_=2.0,
     return S
 
 def top_k_selection(r, k=3):
-    """Return top-k indices by score vector `r` (highest first)."""
     return list(np.argsort(r)[-k:][::-1])
+
 
 greedy_hits = 0
 topk_hits = 0
@@ -271,7 +173,6 @@ for sample in small_data:
     print("Query:", query)
     print("Answer:", answer)
 
-    # chunks = chunks[:50]
 
     chunk_embeddings = model.encode(chunks)
     query_embedding = model.encode([query])[0]
